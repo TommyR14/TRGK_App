@@ -2,9 +2,16 @@
    All user data (schedule, drills, film, profiles) lives in Firestore, not
    here — this only caches the static files needed to boot the app UI.
    Firebase/Firestore/Auth requests are cross-origin, so the fetch handler's
-   same-origin guard below already leaves them alone. */
+   same-origin guard below already leaves them alone.
 
-const CACHE_NAME = 'coaching-hub-v3';
+   Every same-origin fetch uses { cache: 'no-store' } to bypass the browser's
+   own HTTP cache entirely (not just this service worker's Cache Storage) —
+   without that, a network-first strategy can still silently serve a stale
+   file if the browser/CDN's HTTP cache headers say it's still "fresh",
+   which is what caused updates to sometimes need a manual cache-clear to
+   show up right after a deploy. */
+
+const CACHE_NAME = 'coaching-hub-v4';
 const SHELL_FILES = [
   './',
   './index.html',
@@ -28,7 +35,9 @@ const SHELL_FILES = [
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL_FILES)).then(() => self.skipWaiting())
+    caches.open(CACHE_NAME).then((cache) => Promise.all(
+      SHELL_FILES.map((url) => fetch(url, { cache: 'no-store' }).then((res) => cache.put(url, res)))
+    )).then(() => self.skipWaiting())
   );
 });
 
@@ -46,7 +55,7 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin) return;
 
   event.respondWith(
-    fetch(event.request).then((response) => {
+    fetch(event.request, { cache: 'no-store' }).then((response) => {
       if (response.ok) {
         const copy = response.clone();
         caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
