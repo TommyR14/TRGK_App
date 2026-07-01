@@ -62,7 +62,9 @@ const Scheduling = (() => {
 
   async function render(container) {
     ensureLiveSync();
-    if (Auth.isCoach()) players = await DB.getAll('players');
+    players = Auth.isCoach()
+      ? await DB.getAll('players')
+      : await DB.getAllByIndex('players', 'ownerUid', Auth.currentUser().uid);
     renderGrid(container);
   }
 
@@ -160,7 +162,7 @@ const Scheduling = (() => {
 
   function openBookingForm(date, hour) {
     const isCoach = Auth.isCoach();
-    if (isCoach && players.length === 0) {
+    if (players.length === 0) {
       App.openModal(`
         <h3>Book ${fmtHour(hour)} · ${date}</h3>
         <p style="color:var(--text-dim)">Add a player under About Me first — every session needs to be linked to a player.</p>
@@ -172,13 +174,12 @@ const Scheduling = (() => {
     App.openModal(`
       <h3>Book ${fmtHour(hour)} · ${date}</h3>
       <form id="bookForm">
-        ${isCoach ? `
         <div class="field">
           <label>Player</label>
           <select name="playerId" required>
             ${players.map((p) => `<option value="${p.id}">${App.escapeHtml(p.name)}</option>`).join('')}
           </select>
-        </div>` : ''}
+        </div>
         <div class="field">
           <label>Session Type</label>
           <select name="sessionType">
@@ -212,23 +213,17 @@ const Scheduling = (() => {
     modal.querySelector('#bookForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const fd = new FormData(e.target);
+      const player = players.find((p) => p.id === fd.get('playerId'));
       const record = {
         date, hour, status: 'booked',
         sessionType: fd.get('sessionType'),
         position: fd.get('position'),
         note: fd.get('note').trim(),
         createdAt: Date.now(),
+        clientName: player ? player.name : '',
+        playerId: player ? player.id : null,
+        clientUid: isCoach ? (player ? player.ownerUid || null : null) : Auth.currentUser().uid,
       };
-      if (isCoach) {
-        const player = players.find((p) => p.id === fd.get('playerId'));
-        record.clientName = player ? player.name : '';
-        record.playerId = player ? player.id : null;
-        record.clientUid = player ? (player.ownerUid || null) : null;
-      } else {
-        record.clientName = Auth.myPlayerName() || '';
-        record.playerId = Auth.myPlayerId();
-        record.clientUid = Auth.currentUser().uid;
-      }
       await DB.add('schedule', record);
       App.toast('Session booked');
       App.closeModal();

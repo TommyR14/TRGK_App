@@ -14,11 +14,15 @@ const Film = (() => {
 
   async function renderList(container) {
     const isCoach = Auth.isCoach();
-    films = isCoach
-      ? await DB.getAll('films')
-      : await DB.getAllByIndex('films', 'playerId', Auth.myPlayerId());
+    if (isCoach) {
+      films = await DB.getAll('films');
+      players = await DB.getAll('players');
+    } else {
+      players = await DB.getAllByIndex('players', 'ownerUid', Auth.currentUser().uid);
+      const playerIds = players.map((p) => p.id);
+      films = await DB.getAllByIndexIn('films', 'playerId', playerIds);
+    }
     films.sort((a, b) => b.createdAt - a.createdAt);
-    players = isCoach ? await DB.getAll('players') : [];
 
     container.innerHTML = `
       <div class="toolbar">
@@ -29,7 +33,7 @@ const Film = (() => {
         ${isCoach ? `<button class="btn" id="uploadBtn"><svg><use href="#icon-plus"/></svg> Add Film</button>` : ''}
       </div>
       ${films.length ? `<div class="film-grid">${films.map((f) => filmCardHtml(f, isCoach)).join('')}</div>`
-                     : `<div class="empty-state">No film ${isCoach ? 'added' : 'linked to you'} yet.</div>`}
+                     : `<div class="empty-state">No film ${isCoach ? 'added' : 'linked to your players'} yet.</div>`}
     `;
 
     if (isCoach) container.querySelector('#uploadBtn').addEventListener('click', openUploadForm);

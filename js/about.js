@@ -1,5 +1,6 @@
 /* About Me tab: player profiles. Coach sees and manages everyone; a client
-   sees and edits only their own profile (created during onboarding). */
+   sees and manages only their own player profiles (one per child, all
+   created during onboarding or added later from here). */
 
 const About = (() => {
   let cache = [];
@@ -16,20 +17,20 @@ const About = (() => {
       <div class="toolbar">
         <div>
           <h2 class="section-title">About Me</h2>
-          <p class="section-sub">${isCoach ? 'Player profiles for everyone you coach.' : 'Your player profile.'}</p>
+          <p class="section-sub">${isCoach ? 'Player profiles for everyone you coach.' : 'Your player profile(s) — add another if you have more than one child playing.'}</p>
         </div>
-        ${isCoach ? `<button class="btn" id="addPlayerBtn"><svg><use href="#icon-plus"/></svg> Add Player</button>` : ''}
+        <button class="btn" id="addPlayerBtn"><svg><use href="#icon-plus"/></svg> Add Player</button>
       </div>
-      ${cache.length ? `<div class="player-grid">${cache.map((p) => cardHtml(p, isCoach)).join('')}</div>`
+      ${cache.length ? `<div class="player-grid">${cache.map((p) => cardHtml(p)).join('')}</div>`
                      : `<div class="empty-state">No player profiles yet.</div>`}
     `;
 
-    if (isCoach) container.querySelector('#addPlayerBtn').addEventListener('click', () => openForm());
+    container.querySelector('#addPlayerBtn').addEventListener('click', () => openForm());
     container.querySelectorAll('[data-edit]').forEach((btn) => btn.addEventListener('click', () => openForm(btn.dataset.edit)));
     container.querySelectorAll('[data-del]').forEach((btn) => btn.addEventListener('click', () => remove(btn.dataset.del)));
   }
 
-  function cardHtml(p, isCoach) {
+  function cardHtml(p) {
     return `
       <div class="card player-card">
         <h4>${App.escapeHtml(p.name)}</h4>
@@ -39,7 +40,7 @@ const About = (() => {
         <div class="row"><span>High School Team</span><span>${App.escapeHtml(p.hsTeam)}</span></div>
         <div class="card-actions">
           <button class="btn secondary small" data-edit="${p.id}">Edit</button>
-          ${isCoach ? `<button class="btn danger small" data-del="${p.id}">Delete</button>` : ''}
+          <button class="btn danger small" data-del="${p.id}">Delete</button>
         </div>
       </div>
     `;
@@ -102,7 +103,7 @@ const About = (() => {
       await DB.put('players', record);
       App.toast('Player updated');
     } else {
-      record.ownerUid = null;
+      record.ownerUid = Auth.isCoach() ? null : Auth.currentUser().uid;
       await DB.add('players', record);
       App.toast('Player added');
     }

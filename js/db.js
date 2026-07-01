@@ -40,6 +40,16 @@ const DB = {
     const snap = await collRef(store).where(field, '==', value).get();
     return snapshotToRows(snap);
   },
+  /* Like getAllByIndex but matches any of several values (Firestore 'in'
+     queries cap at 10 terms, so this chunks and merges when needed — used
+     to fetch film for all of a client's players at once). */
+  async getAllByIndexIn(store, field, values) {
+    if (!values.length) return [];
+    const chunks = [];
+    for (let i = 0; i < values.length; i += 10) chunks.push(values.slice(i, i + 10));
+    const results = await Promise.all(chunks.map((chunk) => collRef(store).where(field, 'in', chunk).get()));
+    return results.flatMap(snapshotToRows);
+  },
   async delete(store, id) {
     await collRef(store).doc(id).delete();
   },

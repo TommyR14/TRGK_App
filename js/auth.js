@@ -5,8 +5,6 @@
 const Auth = (() => {
   let mode = 'signin'; // 'signin' | 'signup'
   let role = null;     // 'coach' | 'client'
-  let myPlayerId = null;
-  let myPlayerName = null;
   let appStarted = false;
 
   function currentUser() {
@@ -15,11 +13,6 @@ const Auth = (() => {
 
   function isCoach() {
     return role === 'coach';
-  }
-
-  function setMyPlayer(id, name) {
-    myPlayerId = id;
-    myPlayerName = name;
   }
 
   function screenEl() { return document.getElementById('authScreen'); }
@@ -87,7 +80,7 @@ const Auth = (() => {
   function showOnboardingForm() {
     cardEl().innerHTML = `
       <h1>Welcome</h1>
-      <p class="section-sub">Set up your player profile to get started.</p>
+      <p class="section-sub">Set up your player profile to get started. You can add more players (e.g. additional children) anytime from About Me.</p>
       <form id="onboardForm">
         <div class="field">
           <label>Name</label>
@@ -117,7 +110,7 @@ const Auth = (() => {
     document.getElementById('onboardForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const fd = new FormData(e.target);
-      const id = await DB.add('players', {
+      await DB.add('players', {
         ownerUid: currentUser().uid,
         name: fd.get('name').trim(),
         birthYear: fd.get('birthYear'),
@@ -125,7 +118,6 @@ const Auth = (() => {
         clubTeam: fd.get('clubTeam').trim(),
         hsTeam: fd.get('hsTeam').trim(),
       });
-      setMyPlayer(id, fd.get('name').trim());
       enterApp();
     });
   }
@@ -161,7 +153,6 @@ const Auth = (() => {
         screenEl().classList.add('open');
         return;
       }
-      setMyPlayer(mine[0].id, mine[0].name);
     }
     enterApp();
   }
@@ -171,8 +162,6 @@ const Auth = (() => {
     Fire.auth.onAuthStateChanged((user) => {
       if (!user) {
         role = null;
-        myPlayerId = null;
-        myPlayerName = null;
         document.body.classList.remove('role-coach');
         document.getElementById('topbar').style.display = 'none';
         document.getElementById('app').style.display = 'none';
@@ -185,5 +174,5 @@ const Auth = (() => {
     });
   }
 
-  return { init, currentUser, role: () => role, isCoach, myPlayerId: () => myPlayerId, myPlayerName: () => myPlayerName, setMyPlayer };
+  return { init, currentUser, role: () => role, isCoach };
 })();

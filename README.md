@@ -76,8 +76,10 @@ source of truth, this isn't required for normal use.
 - **Scheduling** — a weekly calendar in 1-hour slots, synced live. Tap an
   open slot to book it (Individual / Small Group / Large Group + position);
   coach can also block times or book on behalf of a walk-in.
-- **About Me** — player profile: name, year of birth, town, club team, and
-  high school team.
+- **About Me** — player profile(s): name, year of birth, town, club team, and
+  high school team. A client account can add more than one player (e.g. a
+  parent with multiple kids) — every profile added there also becomes
+  selectable when booking sessions or reviewing film for that account.
 - **Film** — linked video per player, with timestamped review notes both
   coach and player can add.
 - **Admin** (coach only) — every player, with their profile, sessions, and
