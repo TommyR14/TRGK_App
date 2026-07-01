@@ -1,6 +1,8 @@
-/* Scheduling tab: coach's weekly calendar in 1-hour increments.
-   Each slot is Open (bookable), Booked (with a session-type preference),
-   or Blocked (coach unavailable). All data is local to this device. */
+/* Scheduling tab: weekly calendar in 1-hour increments, synced live via
+   Firestore. Coach sees and manages the full calendar. Clients see the same
+   grid (so they can find an open slot) but can only book/cancel their own
+   sessions, and other clients' bookings show as a generic "Booked" label
+   rather than revealing who booked them. */
 
 const Scheduling = (() => {
   const START_HOUR = 7;   // 7 AM
@@ -10,7 +12,9 @@ const Scheduling = (() => {
   const POSITION_LABEL = { forward: 'Forward', midfielder: 'Midfielder', defender: 'Defender', goalkeeper: 'Goalkeeper', other: 'Other' };
 
   let weekStart = sundayOf(new Date());
+  let allRows = [];
   let slotsByKey = {};
+  let unsubscribe = null;
 
   function sundayOf(date) {
     const d = new Date(date);
@@ -41,27 +45,36 @@ const Scheduling = (() => {
     });
   }
 
-  async function loadWeekSlots() {
+  function ensureLiveSync() {
+    if (unsubscribe) return;
+    unsubscribe = DB.watch('schedule', (rows) => {
+      allRows = rows;
+      const view = document.getElementById('view-scheduling');
+      if (view && view.classList.contains('active')) renderGrid(view);
+    });
+  }
+
+  function rebuildSlotsByKey() {
     slotsByKey = {};
-    const dates = weekDates();
-    for (const d of dates) {
-      const rows = await DB.getAllByIndex('schedule', 'date', fmtDate(d));
-      rows.forEach((r) => { slotsByKey[`${r.date}_${r.hour}`] = r; });
-    }
+    allRows.forEach((r) => { slotsByKey[`${r.date}_${r.hour}`] = r; });
   }
 
   async function render(container) {
-    await loadWeekSlots();
+    ensureLiveSync();
+    renderGrid(container);
+  }
+
+  function renderGrid(container) {
+    rebuildSlotsByKey();
     const dates = weekDates();
     const hours = [];
     for (let h = START_HOUR; h < END_HOUR; h++) hours.push(h);
-    const todayStr = fmtDate(new Date());
 
     container.innerHTML = `
       <div class="toolbar">
         <div>
           <h2 class="section-title">Scheduling</h2>
-          <p class="section-sub">Tap an open slot to book a session, or an existing slot to view/edit it.</p>
+          <p class="section-sub">${Auth.isCoach() ? 'Tap an open slot to book a session, or an existing slot to view/edit it.' : 'Tap an open slot to book your session.'}</p>
         </div>
       </div>
       <div class="week-nav">
@@ -74,7 +87,7 @@ const Scheduling = (() => {
         <div class="sched-grid">
           <div class="head-cell"></div>
           ${dates.map((d) => `
-            <div class="head-cell${fmtDate(d) === todayStr ? '' : ''}">
+            <div class="head-cell">
               ${DAY_NAMES[d.getDay()]}<br/><span class="d">${d.getMonth() + 1}/${d.getDate()}</span>
             </div>
           `).join('')}
@@ -88,14 +101,14 @@ const Scheduling = (() => {
 
     container.querySelector('#prevWeek').addEventListener('click', () => shiftWeek(-7));
     container.querySelector('#nextWeek').addEventListener('click', () => shiftWeek(7));
-    container.querySelector('#todayBtn').addEventListener('click', () => { weekStart = sundayOf(new Date()); render(container); });
+    container.querySelector('#todayBtn').addEventListener('click', () => { weekStart = sundayOf(new Date()); renderGrid(container); });
     container.querySelectorAll('.slot-cell').forEach((cell) => {
       cell.addEventListener('click', () => onSlotClick(cell.dataset.date, Number(cell.dataset.hour)));
     });
 
     function shiftWeek(days) {
       weekStart.setDate(weekStart.getDate() + days);
-      render(container);
+      renderGrid(container);
     }
   }
 
@@ -105,14 +118,23 @@ const Scheduling = (() => {
     return `${first.toLocaleDateString(undefined, opts)} – ${last.toLocaleDateString(undefined, opts)}, ${last.getFullYear()}`;
   }
 
+  function isMine(rec) {
+    return rec.clientUid && rec.clientUid === Auth.currentUser().uid;
+  }
+
   function slotCell(date, hour) {
     const key = `${fmtDate(date)}_${hour}`;
     const rec = slotsByKey[key];
     const status = rec ? rec.status : 'open';
+    const canSeeDetail = rec && (Auth.isCoach() || isMine(rec));
     let inner = 'Open';
     if (status === 'booked') {
-      const positionText = rec.position ? ` · ${POSITION_LABEL[rec.position] || ''}` : '';
-      inner = `<div class="slot-title">${App.escapeHtml(rec.clientName || 'Booked')}</div><div class="slot-type">${SESSION_LABEL[rec.sessionType] || ''}${positionText}</div>`;
+      if (canSeeDetail) {
+        const positionText = rec.position ? ` · ${POSITION_LABEL[rec.position] || ''}` : '';
+        inner = `<div class="slot-title">${App.escapeHtml(rec.clientName || 'Booked')}</div><div class="slot-type">${SESSION_LABEL[rec.sessionType] || ''}${positionText}</div>`;
+      } else {
+        inner = `<div class="slot-title">Booked</div>`;
+      }
     } else if (status === 'blocked') {
       inner = `<div class="slot-title">Blocked</div>`;
     }
@@ -122,12 +144,20 @@ const Scheduling = (() => {
   function onSlotClick(date, hour) {
     const key = `${date}_${hour}`;
     const rec = slotsByKey[key];
-    if (!rec) openBookingForm(date, hour);
-    else if (rec.status === 'booked') openDetail(rec);
-    else if (rec.status === 'blocked') openBlockedDetail(rec);
+    if (!rec) return openBookingForm(date, hour);
+    if (rec.status === 'booked') {
+      if (Auth.isCoach() || isMine(rec)) return openDetail(rec);
+      App.toast('This time is already booked');
+      return;
+    }
+    if (rec.status === 'blocked') {
+      if (Auth.isCoach()) return openBlockedDetail(rec);
+      App.toast('This time is unavailable');
+    }
   }
 
   function openBookingForm(date, hour) {
+    const isCoach = Auth.isCoach();
     App.openModal(`
       <h3>Book ${fmtHour(hour)} · ${date}</h3>
       <form id="bookForm">
@@ -149,16 +179,17 @@ const Scheduling = (() => {
             <option value="other">Other</option>
           </select>
         </div>
+        ${isCoach ? `
         <div class="field">
           <label>Client / Player Name</label>
           <input type="text" name="clientName" placeholder="Optional" />
-        </div>
+        </div>` : ''}
         <div class="field">
           <label>Note</label>
           <textarea name="note" placeholder="Optional"></textarea>
         </div>
         <div class="modal-actions">
-          <button type="button" class="btn secondary" id="blockBtn">Block This Time</button>
+          ${isCoach ? `<button type="button" class="btn secondary" id="blockBtn">Block This Time</button>` : ''}
           <button type="submit" class="btn">Book Session</button>
         </div>
       </form>
@@ -168,45 +199,54 @@ const Scheduling = (() => {
     modal.querySelector('#bookForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const fd = new FormData(e.target);
-      await DB.add('schedule', {
+      const record = {
         date, hour, status: 'booked',
         sessionType: fd.get('sessionType'),
         position: fd.get('position'),
-        clientName: fd.get('clientName').trim(),
         note: fd.get('note').trim(),
         createdAt: Date.now(),
-      });
+      };
+      if (isCoach) {
+        record.clientName = fd.get('clientName').trim();
+        record.playerId = null;
+        record.clientUid = null;
+      } else {
+        record.clientName = Auth.myPlayerName() || '';
+        record.playerId = Auth.myPlayerId();
+        record.clientUid = Auth.currentUser().uid;
+      }
+      await DB.add('schedule', record);
       App.toast('Session booked');
       App.closeModal();
-      render(document.getElementById('view-scheduling'));
     });
-    modal.querySelector('#blockBtn').addEventListener('click', async () => {
-      await DB.add('schedule', { date, hour, status: 'blocked', sessionType: '', clientName: '', note: '', createdAt: Date.now() });
-      App.toast('Time blocked');
-      App.closeModal();
-      render(document.getElementById('view-scheduling'));
-    });
+    if (isCoach) {
+      modal.querySelector('#blockBtn').addEventListener('click', async () => {
+        await DB.add('schedule', { date, hour, status: 'blocked', sessionType: '', position: '', clientName: '', note: '', playerId: null, clientUid: null, createdAt: Date.now() });
+        App.toast('Time blocked');
+        App.closeModal();
+      });
+    }
   }
 
   function openDetail(rec) {
+    const canCancel = Auth.isCoach() || isMine(rec);
     App.openModal(`
       <h3>${fmtHour(rec.hour)} · ${rec.date}</h3>
       <div class="field"><label>Session Type</label><div>${SESSION_LABEL[rec.sessionType] || '—'}</div></div>
       <div class="field"><label>Position</label><div>${POSITION_LABEL[rec.position] || '—'}</div></div>
       <div class="field"><label>Client / Player</label><div>${App.escapeHtml(rec.clientName) || '—'}</div></div>
       <div class="field"><label>Note</label><div>${App.escapeHtml(rec.note) || '—'}</div></div>
-      <div class="modal-actions">
-        <button class="btn danger" id="cancelSlot">Cancel Booking</button>
-      </div>
+      ${canCancel ? `<div class="modal-actions"><button class="btn danger" id="cancelSlot">Cancel Booking</button></div>` : ''}
     `);
     const modal = document.getElementById('modal');
     modal.querySelector('[data-close]').addEventListener('click', App.closeModal);
-    modal.querySelector('#cancelSlot').addEventListener('click', async () => {
-      await DB.delete('schedule', rec.id);
-      App.toast('Booking removed');
-      App.closeModal();
-      render(document.getElementById('view-scheduling'));
-    });
+    if (canCancel) {
+      modal.querySelector('#cancelSlot').addEventListener('click', async () => {
+        await DB.delete('schedule', rec.id);
+        App.toast('Booking removed');
+        App.closeModal();
+      });
+    }
   }
 
   function openBlockedDetail(rec) {
@@ -223,7 +263,6 @@ const Scheduling = (() => {
       await DB.delete('schedule', rec.id);
       App.toast('Time reopened');
       App.closeModal();
-      render(document.getElementById('view-scheduling'));
     });
   }
 

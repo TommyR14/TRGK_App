@@ -1,10 +1,11 @@
 /* Core app shell: tab routing, modal helper, toast helper. */
 
 const App = (() => {
-  const TABS = ['home', 'drills', 'scheduling', 'about', 'film'];
+  const TABS = ['home', 'drills', 'scheduling', 'about', 'film', 'admin'];
 
   function showTab(tab) {
     if (!TABS.includes(tab)) tab = 'home';
+    if (tab === 'admin' && !Auth.isCoach()) tab = 'home';
     document.querySelectorAll('.tab-view').forEach((el) => {
       el.classList.toggle('active', el.dataset.tab === tab);
     });
@@ -22,6 +23,7 @@ const App = (() => {
     if (tab === 'scheduling') Scheduling.render(el);
     if (tab === 'about') About.render(el);
     if (tab === 'film') Film.render(el);
+    if (tab === 'admin') Admin.render(el);
   }
 
   function goTo(tab) {
@@ -73,12 +75,6 @@ const App = (() => {
     window.addEventListener('hashchange', () => {
       showTab(window.location.hash.replace('#', '') || 'home');
     });
-
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('service-worker.js').catch(() => {
-        /* offline install just won't be available (e.g. opened via file://) */
-      });
-    }
 
     showTab(window.location.hash.replace('#', '') || 'home');
   }

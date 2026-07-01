@@ -1,6 +1,7 @@
-/* Individual Drills tab: soccer skills library grouped by level,
-   each with a description and an optional video (YouTube/Vimeo link,
-   direct video URL, or an uploaded file stored locally). */
+/* Individual Drills tab: soccer skills library grouped by level, shared
+   across everyone. The coach manages the library; clients get a read-only
+   view. Videos are links (YouTube/Vimeo/direct URL) rather than uploads, so
+   the library works the same on every device with no file storage needed. */
 
 const Drills = (() => {
   const LEVELS = ['foundation', 'intermediate', 'advanced'];
@@ -41,14 +42,6 @@ const Drills = (() => {
   let cache = [];
   let editingId = null;
 
-  async function seedIfEmpty() {
-    const existing = await DB.getAll('drills');
-    if (existing.length > 0) return;
-    for (const [level, title, description] of SEED) {
-      await DB.add('drills', { level, title, description, videoType: 'none', videoUrl: '', videoBlob: null, createdAt: Date.now() });
-    }
-  }
-
   function toEmbedUrl(url) {
     try {
       const u = new URL(url);
@@ -66,20 +59,17 @@ const Drills = (() => {
     return null;
   }
 
-  function videoMarkup(drill) {
-    if (drill.videoType === 'upload' && drill.videoBlob) {
-      const url = URL.createObjectURL(drill.videoBlob);
-      return `<div class="drill-video"><video src="${url}" controls preload="metadata"></video></div>`;
-    }
-    if (drill.videoType === 'url' && drill.videoUrl) {
-      const embed = toEmbedUrl(drill.videoUrl);
+  function videoMarkup(videoUrl) {
+    if (videoUrl) {
+      const embed = toEmbedUrl(videoUrl);
       if (embed) return `<div class="drill-video"><iframe src="${embed}" allowfullscreen></iframe></div>`;
-      return `<div class="drill-video"><video src="${App.escapeHtml(drill.videoUrl)}" controls preload="metadata"></video></div>`;
+      return `<div class="drill-video"><video src="${App.escapeHtml(videoUrl)}" controls preload="metadata"></video></div>`;
     }
     return `<div class="drill-video empty">No video added yet</div>`;
   }
 
   async function render(container) {
+    const isCoach = Auth.isCoach();
     cache = await DB.getAll('drills');
     const groups = LEVELS.map((lvl) => ({
       level: lvl,
@@ -92,7 +82,7 @@ const Drills = (() => {
           <h2 class="section-title">Individual Drills</h2>
           <p class="section-sub">Foundation through advanced soccer skills — scroll to browse by level.</p>
         </div>
-        <button class="btn" id="addDrillBtn"><svg><use href="#icon-plus"/></svg> Add Drill</button>
+        ${isCoach ? `<button class="btn" id="addDrillBtn"><svg><use href="#icon-plus"/></svg> Add Drill</button>` : ''}
       </div>
       ${groups.map((g) => `
         <div class="level-block">
@@ -100,31 +90,34 @@ const Drills = (() => {
             <span class="level-badge ${g.level}">${LEVEL_LABEL[g.level]}</span>
             <h3>${LEVEL_LABEL[g.level]} Skills</h3>
           </div>
-          ${g.items.length ? `<div class="drill-grid">${g.items.map(cardHtml).join('')}</div>`
+          ${g.items.length ? `<div class="drill-grid">${g.items.map((d) => cardHtml(d, isCoach)).join('')}</div>`
                             : `<div class="empty-state">No drills added at this level yet.</div>`}
         </div>
       `).join('')}
     `;
 
-    container.querySelector('#addDrillBtn').addEventListener('click', () => openForm());
-    container.querySelectorAll('[data-edit]').forEach((btn) => {
-      btn.addEventListener('click', () => openForm(Number(btn.dataset.edit)));
-    });
-    container.querySelectorAll('[data-del]').forEach((btn) => {
-      btn.addEventListener('click', () => removeDrill(Number(btn.dataset.del)));
-    });
+    if (isCoach) {
+      container.querySelector('#addDrillBtn').addEventListener('click', () => openForm());
+      container.querySelectorAll('[data-edit]').forEach((btn) => {
+        btn.addEventListener('click', () => openForm(btn.dataset.edit));
+      });
+      container.querySelectorAll('[data-del]').forEach((btn) => {
+        btn.addEventListener('click', () => removeDrill(btn.dataset.del));
+      });
+    }
   }
 
-  function cardHtml(d) {
+  function cardHtml(d, isCoach) {
     return `
       <div class="card drill-card">
-        ${videoMarkup(d)}
+        ${videoMarkup(d.videoUrl)}
         <h4>${App.escapeHtml(d.title)}</h4>
         <p>${App.escapeHtml(d.description)}</p>
+        ${isCoach ? `
         <div class="card-actions">
           <button class="btn secondary small" data-edit="${d.id}">Edit</button>
           <button class="btn danger small" data-del="${d.id}">Delete</button>
-        </div>
+        </div>` : ''}
       </div>
     `;
   }
@@ -150,14 +143,8 @@ const Drills = (() => {
           <textarea name="description" required>${drill ? App.escapeHtml(drill.description) : ''}</textarea>
         </div>
         <div class="field">
-          <label>Video</label>
-          <div class="radio-group" style="margin-bottom:10px;">
-            <label><input type="radio" name="videoType" value="none" ${!drill || drill.videoType === 'none' ? 'checked' : ''}/> None</label>
-            <label><input type="radio" name="videoType" value="url" ${drill && drill.videoType === 'url' ? 'checked' : ''}/> Link (YouTube/Vimeo/URL)</label>
-            <label><input type="radio" name="videoType" value="upload" ${drill && drill.videoType === 'upload' ? 'checked' : ''}/> Upload File</label>
-          </div>
+          <label>Video Link (YouTube, Vimeo, or direct URL — optional)</label>
           <input type="url" name="videoUrl" placeholder="https://..." value="${drill && drill.videoUrl ? App.escapeHtml(drill.videoUrl) : ''}" />
-          <input type="file" name="videoFile" accept="video/*" style="margin-top:8px;" />
         </div>
         <div class="modal-actions">
           <button type="button" class="btn secondary" data-close>Cancel</button>
@@ -172,25 +159,14 @@ const Drills = (() => {
 
   async function onSubmit(e) {
     e.preventDefault();
-    const form = e.target;
-    const fd = new FormData(form);
-    const videoType = fd.get('videoType');
+    const fd = new FormData(e.target);
     const record = {
       title: fd.get('title').trim(),
       level: fd.get('level'),
       description: fd.get('description').trim(),
-      videoType,
-      videoUrl: videoType === 'url' ? fd.get('videoUrl').trim() : '',
-      videoBlob: null,
+      videoUrl: fd.get('videoUrl').trim(),
       createdAt: Date.now(),
     };
-    const file = fd.get('videoFile');
-    if (videoType === 'upload' && file && file.size > 0) {
-      record.videoBlob = file;
-    } else if (videoType === 'upload' && editingId) {
-      const existing = cache.find((d) => d.id === editingId);
-      if (existing) record.videoBlob = existing.videoBlob;
-    }
 
     if (editingId) {
       record.id = editingId;
@@ -211,5 +187,5 @@ const Drills = (() => {
     render(document.getElementById('view-drills'));
   }
 
-  return { render, seedIfEmpty };
+  return { render, toEmbedUrl, SEED };
 })();

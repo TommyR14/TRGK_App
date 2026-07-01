@@ -100,6 +100,53 @@ button, input, select, textarea {
 .backup-btn span { font-size: 10px; text-transform: uppercase; font-weight: 600; }
 .backup-btn .nav-icon { width: 22px; height: 22px; }
 
+.coach-only { display: none; }
+body.role-coach .coach-only { display: flex; }
+
+/* ---------- Auth screen ---------- */
+.auth-screen {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  align-items: center;
+  justify-content: center;
+  background: #0b0b0b;
+  padding: 20px;
+}
+.auth-screen.open { display: flex; }
+.auth-card {
+  width: 100%;
+  max-width: 380px;
+  background: #171717;
+  border: 1px solid #2b2b2b;
+  border-radius: 16px;
+  padding: 28px 26px;
+}
+.auth-card h1 { font-size: 22px; margin: 0 0 6px; text-align: center; }
+.auth-card .section-sub { text-align: center; margin-bottom: 22px; }
+.auth-error {
+  background: rgba(229,72,77,.12);
+  border: 1px solid var(--danger);
+  color: #ff9a9d;
+  border-radius: 9px;
+  padding: 9px 11px;
+  font-size: 13px;
+}
+.auth-toggle {
+  display: block;
+  width: 100%;
+  text-align: center;
+  background: none;
+  border: none;
+  color: var(--accent);
+  margin-top: 16px;
+  cursor: pointer;
+  font-size: 13.5px;
+}
+.auth-toggle:hover { text-decoration: underline; }
+.backup-btn .nav-icon { width: 22px; height: 22px; }
+
 /* ---------- Main / tabs ---------- */
 #app {
   padding-top: var(--bar-h);

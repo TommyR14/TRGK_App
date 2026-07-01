@@ -1,49 +1,84 @@
 # Coaching Hub
 
 A private coaching business app — drills library, scheduling, player
-profiles, and film review — built as a plain HTML/CSS/JS site with **no
-server and no hosting cost**. All data (schedule, drills, player profiles,
-film video, and notes) is stored locally in your browser's IndexedDB.
+profiles, and film review — built as a plain HTML/CSS/JS site (no build
+step, no framework) hosted for free on GitHub Pages. Data lives in
+[Firebase](https://firebase.google.com) (Authentication + Firestore) on the
+free Spark tier, so it stays $0/month with no credit card required — video
+is handled as a link (YouTube/Vimeo/direct URL) rather than a file upload,
+specifically to avoid needing paid file storage.
 
-## Running it
+## One-time setup (you only need to do this once)
 
-**Simplest — just open it:**
-Double-click `index.html` and it opens in your browser. Everything works
-except installing it as an offline app (browsers block that for `file://`
-pages).
+1. Create a free project at https://console.firebase.google.com (no credit
+   card needed).
+2. In the project: **Authentication** → Sign-in method → enable
+   **Email/Password**.
+3. **Firestore Database** → Create database (production mode, any region).
+4. **Project settings** → General → "Your apps" → add a **Web app** → copy
+   the config object it gives you into `js/firebase-config.js` (replace the
+   `REPLACE_ME` placeholders). Also set the `COACH_EMAIL` constant in that
+   same file to your own login email — that's the account the app treats as
+   the coach/admin.
+5. **Firestore Database** → Rules → paste in the contents of
+   `firestore.rules` (in this repo) → Publish.
+6. Open the live site and sign up once using the same email you set as
+   `COACH_EMAIL` — that becomes your coach account, with access to the
+   Admin tab.
+7. Run the one-time drill-library seed: open `js/migrate-drills.js` for
+   instructions, or manually add a few drills via the Drills tab's "Add
+   Drill" button.
 
-**To install it as an app (offline, icon on your home screen/desktop):**
-Serve the folder over `http://localhost` with any free static server, e.g.:
+Clients just visit the same URL and sign up with their own email — they
+automatically get a client account scoped to their own profile.
+
+## Running it locally
 
 ```bash
 python3 -m http.server 8080
-# or: npx serve .
 ```
 
-Then open `http://localhost:8080` in Chrome/Edge and use the browser's
-"Install app" option (or "Add to Home Screen" on mobile). No account,
-no cloud, no monthly fee — the server only needs to run while you're
-using it on that device.
+Then open `http://localhost:8080`. (Opening `index.html` directly via
+`file://` mostly works too, but browsers block service worker registration
+— and therefore offline/installable-app support — for `file://` pages.)
 
-## Data & backup
+## Installing as a desktop or phone app
 
-Everything is stored only in the browser you're using, on the device
-you're using it on (there's no shared server, so a phone and a laptop
-won't automatically see the same data). Use the **Backup** button in the
-top-right of the nav bar to export a single JSON file you can save
-anywhere (or import back in) — this also lets you move data to another
-device or protect against accidentally clearing browser data.
+Once the site is live (GitHub Pages or `localhost`):
+- **Desktop (Chrome/Edge)**: click the install icon in the address bar →
+  Install.
+- **iPhone (Safari)**: Share → Add to Home Screen.
+- **Android (Chrome)**: menu → Install app.
+
+## Roles
+
+- **Coach** (the `COACH_EMAIL` account): full access — manages the Drills
+  library, sees and manages every player's profile and the full calendar,
+  and has the **Admin** tab, which merges any player's profile + all their
+  sessions (past and future) + all their film in one view.
+- **Client**: sees only their own About Me profile and film, can book/cancel
+  their own calendar slots (shown live on the coach's calendar), can add
+  their own timestamped film notes, and sees the Drills library read-only.
+  Other clients' bookings show as a generic "Booked" label — never another
+  client's name or details.
+
+## Backup
+
+The **Backup** button (coach only) downloads a JSON snapshot of everything
+in Firestore, purely as a personal archive — Firestore itself is the durable
+source of truth, this isn't required for normal use.
 
 ## Tabs
 
-- **Home** — launch pad to the four sections below.
-- **Individual Drills** — soccer skills grouped Foundation → Intermediate
-  → Advanced, each with a description and an optional video (paste a
-  YouTube/Vimeo link or upload a file).
-- **Scheduling** — a weekly calendar in 1-hour slots. Tap an open slot to
-  book it (choosing Individual / Small Group / Large Group) or block it;
-  tap a filled slot to view or cancel it.
-- **About Me** — player roster: name, year of birth, town, club team, and
+- **Home** — launch pad to the sections below.
+- **Individual Drills** — soccer skills grouped Foundation → Intermediate →
+  Advanced, each with a description and an optional video link.
+- **Scheduling** — a weekly calendar in 1-hour slots, synced live. Tap an
+  open slot to book it (Individual / Small Group / Large Group + position);
+  coach can also block times or book on behalf of a walk-in.
+- **About Me** — player profile: name, year of birth, town, club team, and
   high school team.
-- **Film** — upload game/practice video, then add timestamped notes while
-  reviewing; click a note to jump straight to that moment.
+- **Film** — linked video per player, with timestamped review notes both
+  coach and player can add.
+- **Admin** (coach only) — every player, with their profile, sessions, and
+  film merged into one view.

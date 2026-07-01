@@ -1,31 +1,35 @@
-/* About Me tab: player roster — name, birth year, town, club team, high school team. */
+/* About Me tab: player profiles. Coach sees and manages everyone; a client
+   sees and edits only their own profile (created during onboarding). */
 
 const About = (() => {
   let cache = [];
   let editingId = null;
 
   async function render(container) {
-    cache = await DB.getAll('players');
+    const isCoach = Auth.isCoach();
+    cache = isCoach
+      ? await DB.getAll('players')
+      : await DB.getAllByIndex('players', 'ownerUid', Auth.currentUser().uid);
     cache.sort((a, b) => a.name.localeCompare(b.name));
 
     container.innerHTML = `
       <div class="toolbar">
         <div>
           <h2 class="section-title">About Me</h2>
-          <p class="section-sub">Player profiles for everyone you coach.</p>
+          <p class="section-sub">${isCoach ? 'Player profiles for everyone you coach.' : 'Your player profile.'}</p>
         </div>
-        <button class="btn" id="addPlayerBtn"><svg><use href="#icon-plus"/></svg> Add Player</button>
+        ${isCoach ? `<button class="btn" id="addPlayerBtn"><svg><use href="#icon-plus"/></svg> Add Player</button>` : ''}
       </div>
-      ${cache.length ? `<div class="player-grid">${cache.map(cardHtml).join('')}</div>`
-                     : `<div class="empty-state">No player profiles yet. Add one to get started.</div>`}
+      ${cache.length ? `<div class="player-grid">${cache.map((p) => cardHtml(p, isCoach)).join('')}</div>`
+                     : `<div class="empty-state">No player profiles yet.</div>`}
     `;
 
-    container.querySelector('#addPlayerBtn').addEventListener('click', () => openForm());
-    container.querySelectorAll('[data-edit]').forEach((btn) => btn.addEventListener('click', () => openForm(Number(btn.dataset.edit))));
-    container.querySelectorAll('[data-del]').forEach((btn) => btn.addEventListener('click', () => remove(Number(btn.dataset.del))));
+    if (isCoach) container.querySelector('#addPlayerBtn').addEventListener('click', () => openForm());
+    container.querySelectorAll('[data-edit]').forEach((btn) => btn.addEventListener('click', () => openForm(btn.dataset.edit)));
+    container.querySelectorAll('[data-del]').forEach((btn) => btn.addEventListener('click', () => remove(btn.dataset.del)));
   }
 
-  function cardHtml(p) {
+  function cardHtml(p, isCoach) {
     return `
       <div class="card player-card">
         <h4>${App.escapeHtml(p.name)}</h4>
@@ -35,15 +39,16 @@ const About = (() => {
         <div class="row"><span>High School Team</span><span>${App.escapeHtml(p.hsTeam)}</span></div>
         <div class="card-actions">
           <button class="btn secondary small" data-edit="${p.id}">Edit</button>
-          <button class="btn danger small" data-del="${p.id}">Delete</button>
+          ${isCoach ? `<button class="btn danger small" data-del="${p.id}">Delete</button>` : ''}
         </div>
       </div>
     `;
   }
 
-  function openForm(id) {
+  async function openForm(id) {
     editingId = id || null;
-    const p = id ? cache.find((x) => x.id === id) : null;
+    let p = id ? cache.find((x) => x.id === id) : null;
+    if (id && !p) p = await DB.get('players', id); // cache may be cold if opened from Admin
     App.openModal(`
       <h3>${p ? 'Edit Player' : 'Add Player'}</h3>
       <form id="playerForm">
@@ -91,10 +96,13 @@ const About = (() => {
       hsTeam: fd.get('hsTeam').trim(),
     };
     if (editingId) {
+      const existing = cache.find((x) => x.id === editingId);
       record.id = editingId;
+      record.ownerUid = existing ? existing.ownerUid || null : null;
       await DB.put('players', record);
       App.toast('Player updated');
     } else {
+      record.ownerUid = null;
       await DB.add('players', record);
       App.toast('Player added');
     }
@@ -109,5 +117,5 @@ const About = (() => {
     render(document.getElementById('view-about'));
   }
 
-  return { render };
+  return { render, editPlayer: openForm };
 })();

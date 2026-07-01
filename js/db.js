@@ -1,85 +1,65 @@
-/* Local-only persistence layer using IndexedDB.
-   Everything lives in the browser on this device — no server, no hosting cost. */
+/* Firestore-backed persistence layer. Keeps the same DB.* method names the
+   rest of the app already used with IndexedDB, so call sites barely
+   changed — the one real difference is that IDs are now Firestore's
+   auto-generated strings instead of IndexedDB autoincrement integers.
+   `store` can be a plain collection name ('players') or a Firestore
+   subcollection path ('films/abc123/notes') — both work with
+   Fire.db.collection() as-is. */
 
-const DB_NAME = 'coachHubDB';
-const DB_VERSION = 1;
-let dbPromise = null;
-
-function openDatabase() {
-  if (dbPromise) return dbPromise;
-  dbPromise = new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = (e) => {
-      const db = e.target.result;
-      if (!db.objectStoreNames.contains('players')) {
-        db.createObjectStore('players', { keyPath: 'id', autoIncrement: true });
-      }
-      if (!db.objectStoreNames.contains('drills')) {
-        const s = db.createObjectStore('drills', { keyPath: 'id', autoIncrement: true });
-        s.createIndex('level', 'level', { unique: false });
-      }
-      if (!db.objectStoreNames.contains('schedule')) {
-        const s = db.createObjectStore('schedule', { keyPath: 'id', autoIncrement: true });
-        s.createIndex('date', 'date', { unique: false });
-      }
-      if (!db.objectStoreNames.contains('films')) {
-        db.createObjectStore('films', { keyPath: 'id', autoIncrement: true });
-      }
-      if (!db.objectStoreNames.contains('filmNotes')) {
-        const s = db.createObjectStore('filmNotes', { keyPath: 'id', autoIncrement: true });
-        s.createIndex('filmId', 'filmId', { unique: false });
-      }
-      if (!db.objectStoreNames.contains('meta')) {
-        db.createObjectStore('meta', { keyPath: 'key' });
-      }
-    };
-    req.onsuccess = (e) => resolve(e.target.result);
-    req.onerror = (e) => reject(e.target.error);
-  });
-  return dbPromise;
+function collRef(store) {
+  return Fire.db.collection(store);
 }
 
-function runTx(storeName, mode, work) {
-  return openDatabase().then((db) => new Promise((resolve, reject) => {
-    const tx = db.transaction(storeName, mode);
-    const store = tx.objectStore(storeName);
-    let result;
-    Promise.resolve(work(store)).then((r) => { result = r; }).catch(reject);
-    tx.oncomplete = () => resolve(result);
-    tx.onerror = () => reject(tx.error);
-    tx.onabort = () => reject(tx.error);
-  }));
-}
-
-function reqToPromise(req) {
-  return new Promise((resolve, reject) => {
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
+function snapshotToRows(snap) {
+  return snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
 }
 
 const DB = {
-  add(store, value) {
-    return runTx(store, 'readwrite', (s) => reqToPromise(s.add(value)));
+  async add(store, value) {
+    const ref = await collRef(store).add(value);
+    return ref.id;
   },
-  put(store, value) {
-    return runTx(store, 'readwrite', (s) => reqToPromise(s.put(value)));
+  async put(store, value) {
+    const { id, ...data } = value;
+    if (id) {
+      await collRef(store).doc(id).set(data);
+      return id;
+    }
+    const ref = await collRef(store).add(data);
+    return ref.id;
   },
-  get(store, id) {
-    return runTx(store, 'readonly', (s) => reqToPromise(s.get(id)));
+  async get(store, id) {
+    const doc = await collRef(store).doc(id).get();
+    return doc.exists ? { id: doc.id, ...doc.data() } : undefined;
   },
-  getAll(store) {
-    return runTx(store, 'readonly', (s) => reqToPromise(s.getAll()));
+  async getAll(store) {
+    const snap = await collRef(store).get();
+    return snapshotToRows(snap);
   },
-  getAllByIndex(store, indexName, value) {
-    return runTx(store, 'readonly', (s) => reqToPromise(s.index(indexName).getAll(value)));
+  async getAllByIndex(store, field, value) {
+    const snap = await collRef(store).where(field, '==', value).get();
+    return snapshotToRows(snap);
   },
-  delete(store, id) {
-    return runTx(store, 'readwrite', (s) => reqToPromise(s.delete(id)));
+  async delete(store, id) {
+    await collRef(store).doc(id).delete();
   },
-  clear(store) {
-    return runTx(store, 'readwrite', (s) => reqToPromise(s.clear()));
+  async clear(store) {
+    const snap = await collRef(store).get();
+    await Promise.all(snap.docs.map((d) => d.ref.delete()));
+  },
+  /* Live query. DB.watch('schedule', cb) watches the whole collection;
+     DB.watch('schedule', 'date', '2026-07-01', cb) filters by field.
+     Returns an unsubscribe function — callers must invoke it before
+     re-subscribing (e.g. on re-render) to avoid piling up listeners. */
+  watch(store, ...args) {
+    const callback = args.pop();
+    let query = collRef(store);
+    if (args.length === 2) {
+      const [field, value] = args;
+      query = query.where(field, '==', value);
+    }
+    return query.onSnapshot((snap) => callback(snapshotToRows(snap)));
   },
 };
 
-const STORES = ['players', 'drills', 'schedule', 'films', 'filmNotes'];
+const STORES = ['players', 'drills', 'schedule', 'films'];

@@ -1,12 +1,17 @@
 /* Caches the app shell so Coaching Hub keeps working offline once installed.
-   All user data (schedule, drills, film, profiles) lives in IndexedDB, not here. */
+   All user data (schedule, drills, film, profiles) lives in Firestore, not
+   here — this only caches the static files needed to boot the app UI.
+   Firebase/Firestore/Auth requests are cross-origin, so the fetch handler's
+   same-origin guard below already leaves them alone. */
 
-const CACHE_NAME = 'coaching-hub-v2';
+const CACHE_NAME = 'coaching-hub-v3';
 const SHELL_FILES = [
   './',
   './index.html',
   './manifest.json',
   './css/styles.css',
+  './js/firebase-config.js',
+  './js/firebase-init.js',
   './js/db.js',
   './js/app.js',
   './js/home.js',
@@ -14,7 +19,9 @@ const SHELL_FILES = [
   './js/scheduling.js',
   './js/about.js',
   './js/film.js',
+  './js/admin.js',
   './js/backup.js',
+  './js/auth.js',
   './js/main.js',
   './icons/icon.svg',
 ];

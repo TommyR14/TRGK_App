@@ -1,0 +1,55 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() { return request.auth != null; }
+    function isCoach() {
+      return isSignedIn() &&
+        request.auth.token.email == 'tommyreardonsoccer@gmail.com';
+    }
+    function myUid() { return request.auth.uid; }
+
+    match /users/{uid} {
+      allow read: if isSignedIn() && (myUid() == uid || isCoach());
+      allow create: if isSignedIn() && myUid() == uid;
+      allow update: if isCoach();
+    }
+
+    match /players/{playerId} {
+      allow read: if isCoach() || (isSignedIn() && resource.data.ownerUid == myUid());
+      allow create: if isSignedIn() &&
+        (isCoach() || request.resource.data.ownerUid == myUid());
+      allow update, delete: if isCoach() ||
+        (isSignedIn() && resource.data.ownerUid == myUid());
+    }
+
+    match /schedule/{slotId} {
+      // Broad read so every client can see which slots are taken vs open
+      // to render the calendar grid; the app itself hides other clients'
+      // names/notes for anyone but the coach or the booking's own owner.
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() &&
+        (isCoach() || request.resource.data.clientUid == myUid());
+      allow update, delete: if isCoach() ||
+        (isSignedIn() && resource.data.clientUid == myUid());
+    }
+
+    match /drills/{drillId} {
+      allow read: if isSignedIn();
+      allow write: if isCoach();
+    }
+
+    match /films/{filmId} {
+      allow read: if isCoach() ||
+        (isSignedIn() && get(/databases/$(database)/documents/players/$(resource.data.playerId)).data.ownerUid == myUid());
+      allow create, update, delete: if isCoach();
+
+      match /notes/{noteId} {
+        allow read: if isCoach() ||
+          (isSignedIn() && get(/databases/$(database)/documents/players/$(get(/databases/$(database)/documents/films/$(filmId)).data.playerId)).data.ownerUid == myUid());
+        allow create: if isSignedIn(); // both coach and the linked client can add notes
+        allow update, delete: if isCoach() || resource.data.authorUid == myUid();
+      }
+    }
+  }
+}
