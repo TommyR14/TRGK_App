@@ -59,6 +59,15 @@ const Film = (() => {
   }
 
   function openUploadForm() {
+    if (players.length === 0) {
+      App.openModal(`
+        <h3>Add Film</h3>
+        <p style="color:var(--text-dim)">Add a player under About Me first — every film clip needs to be linked to a player.</p>
+      `);
+      const modal = document.getElementById('modal');
+      modal.querySelector('[data-close]').addEventListener('click', App.closeModal);
+      return;
+    }
     App.openModal(`
       <h3>Add Film</h3>
       <form id="uploadForm">
@@ -67,9 +76,8 @@ const Film = (() => {
           <input type="text" name="title" placeholder="e.g. vs. Riverdale - 1st Half" required />
         </div>
         <div class="field">
-          <label>Player (optional)</label>
-          <select name="playerId">
-            <option value="">— none —</option>
+          <label>Player</label>
+          <select name="playerId" required>
             ${players.map((p) => `<option value="${p.id}">${App.escapeHtml(p.name)}</option>`).join('')}
           </select>
         </div>
@@ -88,10 +96,9 @@ const Film = (() => {
     modal.querySelector('#uploadForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const fd = new FormData(e.target);
-      const playerId = fd.get('playerId') || null;
       await DB.add('films', {
         title: fd.get('title').trim(),
-        playerId,
+        playerId: fd.get('playerId'),
         videoUrl: fd.get('videoUrl').trim(),
         createdAt: Date.now(),
       });

@@ -15,6 +15,7 @@ const Scheduling = (() => {
   let allRows = [];
   let slotsByKey = {};
   let unsubscribe = null;
+  let players = [];
 
   function sundayOf(date) {
     const d = new Date(date);
@@ -61,6 +62,7 @@ const Scheduling = (() => {
 
   async function render(container) {
     ensureLiveSync();
+    if (Auth.isCoach()) players = await DB.getAll('players');
     renderGrid(container);
   }
 
@@ -158,9 +160,25 @@ const Scheduling = (() => {
 
   function openBookingForm(date, hour) {
     const isCoach = Auth.isCoach();
+    if (isCoach && players.length === 0) {
+      App.openModal(`
+        <h3>Book ${fmtHour(hour)} · ${date}</h3>
+        <p style="color:var(--text-dim)">Add a player under About Me first — every session needs to be linked to a player.</p>
+      `);
+      const modal = document.getElementById('modal');
+      modal.querySelector('[data-close]').addEventListener('click', App.closeModal);
+      return;
+    }
     App.openModal(`
       <h3>Book ${fmtHour(hour)} · ${date}</h3>
       <form id="bookForm">
+        ${isCoach ? `
+        <div class="field">
+          <label>Player</label>
+          <select name="playerId" required>
+            ${players.map((p) => `<option value="${p.id}">${App.escapeHtml(p.name)}</option>`).join('')}
+          </select>
+        </div>` : ''}
         <div class="field">
           <label>Session Type</label>
           <select name="sessionType">
@@ -179,11 +197,6 @@ const Scheduling = (() => {
             <option value="other">Other</option>
           </select>
         </div>
-        ${isCoach ? `
-        <div class="field">
-          <label>Client / Player Name</label>
-          <input type="text" name="clientName" placeholder="Optional" />
-        </div>` : ''}
         <div class="field">
           <label>Note</label>
           <textarea name="note" placeholder="Optional"></textarea>
@@ -207,9 +220,10 @@ const Scheduling = (() => {
         createdAt: Date.now(),
       };
       if (isCoach) {
-        record.clientName = fd.get('clientName').trim();
-        record.playerId = null;
-        record.clientUid = null;
+        const player = players.find((p) => p.id === fd.get('playerId'));
+        record.clientName = player ? player.name : '';
+        record.playerId = player ? player.id : null;
+        record.clientUid = player ? (player.ownerUid || null) : null;
       } else {
         record.clientName = Auth.myPlayerName() || '';
         record.playerId = Auth.myPlayerId();
@@ -234,7 +248,7 @@ const Scheduling = (() => {
       <h3>${fmtHour(rec.hour)} · ${rec.date}</h3>
       <div class="field"><label>Session Type</label><div>${SESSION_LABEL[rec.sessionType] || '—'}</div></div>
       <div class="field"><label>Position</label><div>${POSITION_LABEL[rec.position] || '—'}</div></div>
-      <div class="field"><label>Client / Player</label><div>${App.escapeHtml(rec.clientName) || '—'}</div></div>
+      <div class="field"><label>Player</label><div>${App.escapeHtml(rec.clientName) || '—'}</div></div>
       <div class="field"><label>Note</label><div>${App.escapeHtml(rec.note) || '—'}</div></div>
       ${canCancel ? `<div class="modal-actions"><button class="btn danger" id="cancelSlot">Cancel Booking</button></div>` : ''}
     `);
