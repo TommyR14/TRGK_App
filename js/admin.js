@@ -75,10 +75,10 @@ const Admin = (() => {
       <h2 class="section-title">${App.escapeHtml(player.name)}</h2>
 
       <div class="card" style="margin-bottom:24px;">
-        <div class="row"><span>Year of Birth</span><span>${App.escapeHtml(player.birthYear)}</span></div>
-        <div class="row"><span>Town</span><span>${App.escapeHtml(player.town)}</span></div>
-        <div class="row"><span>Club Team</span><span>${App.escapeHtml(player.clubTeam)}</span></div>
-        <div class="row"><span>High School Team</span><span>${App.escapeHtml(player.hsTeam)}</span></div>
+        <div class="row"><span>Year of Birth</span> <span>${App.escapeHtml(player.birthYear)}</span></div>
+        <div class="row"><span>Town</span> <span>${App.escapeHtml(player.town)}</span></div>
+        <div class="row"><span>Club Team</span> <span>${App.escapeHtml(player.clubTeam)}</span></div>
+        <div class="row"><span>High School Team</span> <span>${App.escapeHtml(player.hsTeam)}</span></div>
         <div class="card-actions" style="margin-top:12px;">
           <button class="btn secondary small" id="editProfileBtn">Edit Profile</button>
         </div>
