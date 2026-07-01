@@ -5,17 +5,16 @@
 const Scheduling = (() => {
   const START_HOUR = 7;   // 7 AM
   const END_HOUR = 21;    // last slot starts 8 PM, ends 9 PM
-  const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const SESSION_LABEL = { individual: 'Individual', small: 'Small Group', large: 'Large Group' };
+  const POSITION_LABEL = { forward: 'Forward', midfielder: 'Midfielder', defender: 'Defender', goalkeeper: 'Goalkeeper', other: 'Other' };
 
-  let weekStart = mondayOf(new Date());
+  let weekStart = sundayOf(new Date());
   let slotsByKey = {};
 
-  function mondayOf(date) {
+  function sundayOf(date) {
     const d = new Date(date);
-    const day = d.getDay(); // 0=Sun..6=Sat
-    const diff = (day === 0 ? -6 : 1 - day);
-    d.setDate(d.getDate() + diff);
+    d.setDate(d.getDate() - d.getDay());
     d.setHours(0, 0, 0, 0);
     return d;
   }
@@ -76,7 +75,7 @@ const Scheduling = (() => {
           <div class="head-cell"></div>
           ${dates.map((d) => `
             <div class="head-cell${fmtDate(d) === todayStr ? '' : ''}">
-              ${DAY_NAMES[(d.getDay() + 6) % 7]}<br/><span class="d">${d.getMonth() + 1}/${d.getDate()}</span>
+              ${DAY_NAMES[d.getDay()]}<br/><span class="d">${d.getMonth() + 1}/${d.getDate()}</span>
             </div>
           `).join('')}
           ${hours.map((h) => `
@@ -89,7 +88,7 @@ const Scheduling = (() => {
 
     container.querySelector('#prevWeek').addEventListener('click', () => shiftWeek(-7));
     container.querySelector('#nextWeek').addEventListener('click', () => shiftWeek(7));
-    container.querySelector('#todayBtn').addEventListener('click', () => { weekStart = mondayOf(new Date()); render(container); });
+    container.querySelector('#todayBtn').addEventListener('click', () => { weekStart = sundayOf(new Date()); render(container); });
     container.querySelectorAll('.slot-cell').forEach((cell) => {
       cell.addEventListener('click', () => onSlotClick(cell.dataset.date, Number(cell.dataset.hour)));
     });
@@ -112,7 +111,8 @@ const Scheduling = (() => {
     const status = rec ? rec.status : 'open';
     let inner = 'Open';
     if (status === 'booked') {
-      inner = `<div class="slot-title">${App.escapeHtml(rec.clientName || 'Booked')}</div><div class="slot-type">${SESSION_LABEL[rec.sessionType] || ''}</div>`;
+      const positionText = rec.position ? ` · ${POSITION_LABEL[rec.position] || ''}` : '';
+      inner = `<div class="slot-title">${App.escapeHtml(rec.clientName || 'Booked')}</div><div class="slot-type">${SESSION_LABEL[rec.sessionType] || ''}${positionText}</div>`;
     } else if (status === 'blocked') {
       inner = `<div class="slot-title">Blocked</div>`;
     }
@@ -140,6 +140,16 @@ const Scheduling = (() => {
           </select>
         </div>
         <div class="field">
+          <label>Position</label>
+          <select name="position">
+            <option value="forward">Forward</option>
+            <option value="midfielder">Midfielder</option>
+            <option value="defender">Defender</option>
+            <option value="goalkeeper">Goalkeeper</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <div class="field">
           <label>Client / Player Name</label>
           <input type="text" name="clientName" placeholder="Optional" />
         </div>
@@ -161,6 +171,7 @@ const Scheduling = (() => {
       await DB.add('schedule', {
         date, hour, status: 'booked',
         sessionType: fd.get('sessionType'),
+        position: fd.get('position'),
         clientName: fd.get('clientName').trim(),
         note: fd.get('note').trim(),
         createdAt: Date.now(),
@@ -181,6 +192,7 @@ const Scheduling = (() => {
     App.openModal(`
       <h3>${fmtHour(rec.hour)} · ${rec.date}</h3>
       <div class="field"><label>Session Type</label><div>${SESSION_LABEL[rec.sessionType] || '—'}</div></div>
+      <div class="field"><label>Position</label><div>${POSITION_LABEL[rec.position] || '—'}</div></div>
       <div class="field"><label>Client / Player</label><div>${App.escapeHtml(rec.clientName) || '—'}</div></div>
       <div class="field"><label>Note</label><div>${App.escapeHtml(rec.note) || '—'}</div></div>
       <div class="modal-actions">
