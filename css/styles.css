@@ -285,7 +285,7 @@ body.role-coach .coach-only { display: flex; }
   border-radius: 999px;
   letter-spacing: .04em;
 }
-.level-badge.foundation { background: #1f3d2d; color: #6ee7a0; }
+.level-badge.foundation { background: #3d3520; color: #d4af37; }
 .level-badge.intermediate { background: #3d341f; color: #f0c05a; }
 .level-badge.advanced { background: #3d1f28; color: #f28b9d; }
 
