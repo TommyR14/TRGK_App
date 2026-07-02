@@ -353,9 +353,11 @@ body.role-coach .coach-only { display: flex; }
 .slot-cell.open:hover { background: rgba(212,175,55,.14); }
 .slot-cell.booked { background: rgba(212,175,55,.22); }
 .slot-cell.blocked { background: repeating-linear-gradient(135deg, #2a2a2a, #2a2a2a 6px, #232323 6px, #232323 12px); cursor: default; }
+.slot-cell.past { opacity: .45; }
+.slot-cell.open.past { cursor: default; }
+.slot-cell.open.past:hover { background: rgba(212,175,55,.05); }
 .slot-cell .slot-title { font-weight: 700; }
 .slot-cell .slot-type { color: var(--text-dim); text-transform: capitalize; }
-.past-day { opacity: .55; }
 
 /* ---------- About ---------- */
 .player-grid {

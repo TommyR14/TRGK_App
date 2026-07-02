@@ -126,10 +126,18 @@ const Scheduling = (() => {
     return rec.clientUid && rec.clientUid === Auth.currentUser().uid;
   }
 
+  function isPast(dateStr, hour) {
+    const slotStart = new Date(`${dateStr}T00:00:00`);
+    slotStart.setHours(hour, 0, 0, 0);
+    return slotStart.getTime() <= Date.now();
+  }
+
   function slotCell(date, hour) {
-    const key = `${fmtDate(date)}_${hour}`;
+    const dateStr = fmtDate(date);
+    const key = `${dateStr}_${hour}`;
     const rec = slotsByKey[key];
     const status = rec ? rec.status : 'open';
+    const past = isPast(dateStr, hour);
     const canSeeDetail = rec && (Auth.isCoach() || isMine(rec));
     let inner = 'Open';
     if (status === 'booked') {
@@ -141,14 +149,19 @@ const Scheduling = (() => {
       }
     } else if (status === 'blocked') {
       inner = `<div class="slot-title">Blocked</div>`;
+    } else if (past) {
+      inner = '';
     }
-    return `<div class="slot-cell ${status}" data-date="${fmtDate(date)}" data-hour="${hour}">${inner}</div>`;
+    return `<div class="slot-cell ${status}${past ? ' past' : ''}" data-date="${dateStr}" data-hour="${hour}">${inner}</div>`;
   }
 
   function onSlotClick(date, hour) {
     const key = `${date}_${hour}`;
     const rec = slotsByKey[key];
-    if (!rec) return openBookingForm(date, hour);
+    if (!rec) {
+      if (isPast(date, hour)) { App.toast('That time has already passed'); return; }
+      return openBookingForm(date, hour);
+    }
     if (rec.status === 'booked') {
       if (Auth.isCoach() || isMine(rec)) return openDetail(rec);
       App.toast('This time is already booked');
